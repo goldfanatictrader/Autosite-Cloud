@@ -15,6 +15,8 @@ npm run test       # vitest (api + web)
 npm run build      # next build + tsc build
 ```
 
+- **Sandbox gotcha**: API defaults to `HOST=0.0.0.0`; in restricted sandboxes the bind crashes with `uv_interface_addresses` (EACCES). Run `HOST=127.0.0.1 npm run dev` there. No code change needed — this is host-environment-specific.
+
 - **No external services needed for MVP.** Persistence is in-memory — accounts, sites, and generated content reset when the API restarts. PostgreSQL/Redis/MinIO in `infra/docker-compose.yml` are planned for later phases and are NOT wired up.
 - Demo account: `demo@autosite.cloud` / `DemoPass123!` (login form is prefilled).
 - CI: `.github/workflows/ci.yml` runs lint → typecheck → test (per ARCHITECTURE §8 shape). Don't invent a different CI shape.
