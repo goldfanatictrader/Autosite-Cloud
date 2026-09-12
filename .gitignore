@@ -1,0 +1,31 @@
+# Dependencies and package-manager caches
+node_modules/
+.npm/
+
+# Build and task outputs
+.next/
+.turbo/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local persistence
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Logs and editor files
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# Hosting providers
+.vercel/

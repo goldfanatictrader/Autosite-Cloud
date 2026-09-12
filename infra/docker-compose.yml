@@ -1,0 +1,37 @@
+name: autosite-cloud
+
+# Optional development infrastructure for future phases. The Phase 1 MVP runs
+# without these services and currently keeps its data in memory.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: autosite_dev
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_USER: autosite
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass devpassword
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+volumes:
+  minio_data:
+  postgres_data:
