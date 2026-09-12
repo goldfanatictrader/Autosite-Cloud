@@ -1,6 +1,8 @@
+import { DEFAULT_DATABASE_URL } from './db/client.js';
 import type { AiProviderOptions } from './modules/ai/provider.js';
 
 export interface AppConfig {
+  databaseUrl: string;
   host: string;
   port: number;
   jwtSecret: string;
@@ -22,6 +24,7 @@ const parsePort = (value: string | undefined): number => {
 };
 
 export const loadConfig = (): AppConfig => ({
+  databaseUrl: process.env['DATABASE_URL'] ?? DEFAULT_DATABASE_URL,
   host: process.env['HOST'] ?? '0.0.0.0',
   port: parsePort(process.env['PORT']),
   jwtSecret:

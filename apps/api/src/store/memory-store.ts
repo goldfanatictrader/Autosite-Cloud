@@ -1,184 +1,41 @@
 import { randomUUID } from 'node:crypto';
 
-import type {
-  Language,
-  PageContent,
-  PageSlug,
-  SiteSettings,
-  SiteStatus,
-  Tone,
-} from '@autosite/shared';
+import type { PageContent, PageSlug } from '@autosite/shared';
 
 import { hashPassword } from '../shared/password.js';
+import {
+  DEFAULT_PAGE_SLUGS,
+  DEMO_EMAIL,
+  DEMO_PASSWORD,
+  DEMO_USER_CREATED_AT,
+  DEMO_USER_ID,
+  DEMO_WORKSPACE_ID,
+  SAMPLE_SITE_DEFINITIONS,
+  seedContent,
+  slugify,
+} from './seed-data.js';
+import {
+  EmailAlreadyExistsError,
+  type ContentRecord,
+  type CreateSiteInput,
+  type CreateUserInput,
+  type DeletedSiteRecord,
+  type SiteQuery,
+  type SiteRecord,
+  type Store,
+  type UpdateSiteInput,
+  type UserRecord,
+} from './store.js';
 
-export const DEMO_EMAIL = 'demo@autosite.cloud';
-export const DEMO_PASSWORD = 'DemoPass123!';
+export { DEMO_EMAIL, DEMO_PASSWORD } from './seed-data.js';
+export type {
+  ContentRecord,
+  DeletedSiteRecord,
+  SiteRecord,
+  UserRecord,
+} from './store.js';
 
-export interface UserRecord {
-  id: string;
-  workspaceId: string;
-  email: string;
-  name: string;
-  passwordHash: string;
-  createdAt: string;
-}
-
-export interface SiteRecord {
-  id: string;
-  workspaceId: string;
-  name: string;
-  slug: string;
-  brief: string | null;
-  tone: Tone;
-  language: Language;
-  status: SiteStatus;
-  templateId: string | null;
-  customDomain: string | null;
-  subdomain: string;
-  settings: SiteSettings;
-  publishedAt: string | null;
-  deletedAt: string | null;
-  restoreBefore: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ContentRecord {
-  siteId: string;
-  pageSlug: PageSlug;
-  content: PageContent;
-  aiGenerated: boolean;
-  version: number;
-  updatedAt: string;
-}
-
-interface CreateUserInput {
-  email: string;
-  name: string;
-  password: string;
-  seedSites?: boolean;
-}
-
-interface CreateSiteInput {
-  workspaceId: string;
-  name: string;
-  templateId: string | null;
-  brief?: string | null;
-}
-
-interface UpdateSiteInput {
-  name?: string;
-  brief?: string | null;
-  tone?: Tone;
-  language?: Language;
-  status?: SiteStatus;
-  settings?: SiteSettings;
-}
-
-export interface DeletedSiteRecord {
-  deletedAt: string;
-  restoreBefore: string;
-}
-
-interface SiteQuery {
-  status?: SiteStatus;
-  search?: string;
-}
-
-const DEFAULT_PAGE_SLUGS: PageSlug[] = [
-  'home',
-  'about',
-  'services',
-  'contact',
-];
-
-const slugify = (value: string): string => {
-  const slug = value
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 63);
-  return slug.length > 0 ? slug : 'new-site';
-};
-
-const seedContent = (siteName: string): Record<PageSlug, PageContent> => ({
-  home: {
-    sections: [
-      {
-        type: 'hero',
-        heading: `Welcome to ${siteName}`,
-        subheading: 'Thoughtful experiences, made for real life.',
-        cta_text: 'Discover More',
-      },
-      {
-        type: 'features',
-        heading: 'Why choose us',
-        items: [
-          {
-            title: 'Made with care',
-            description: 'Every detail is considered from start to finish.',
-          },
-          {
-            title: 'Local expertise',
-            description: 'Friendly guidance grounded in our community.',
-          },
-          {
-            title: 'Dependable service',
-            description: 'Clear communication and support you can count on.',
-          },
-        ],
-      },
-    ],
-  },
-  about: {
-    sections: [
-      {
-        type: 'hero',
-        heading: 'Our Story',
-        subheading: `${siteName} was created to make a meaningful difference for every customer.`,
-      },
-    ],
-  },
-  services: {
-    sections: [
-      {
-        type: 'services',
-        heading: 'What we offer',
-        items: [
-          {
-            title: 'Personal service',
-            description: 'Practical help shaped around your needs.',
-          },
-          {
-            title: 'Expert guidance',
-            description: 'Straightforward advice at every step.',
-          },
-          {
-            title: 'Flexible options',
-            description: 'A simple path that works with your schedule.',
-          },
-        ],
-      },
-    ],
-  },
-  contact: {
-    sections: [
-      {
-        type: 'contact',
-        heading: 'Let’s Talk',
-        subheading: 'We would love to hear what you are planning.',
-        address: '123 Main Street, Your City',
-        phone: '(555) 123-4567',
-        hours: 'Monday–Friday, 9am–6pm',
-        cta_text: 'Get in Touch',
-      },
-    ],
-  },
-});
-
-export class InMemoryStore {
+export class InMemoryStore implements Store {
   private readonly users = new Map<string, UserRecord>();
   private readonly sites = new Map<string, SiteRecord>();
   private readonly contents = new Map<string, Map<PageSlug, ContentRecord>>();
@@ -204,6 +61,9 @@ export class InMemoryStore {
   }
 
   createUser(input: CreateUserInput): UserRecord {
+    if (this.findUserByEmail(input.email) !== undefined) {
+      throw new EmailAlreadyExistsError();
+    }
     const id = randomUUID();
     const createdAt = this.clock().toISOString();
     const record: UserRecord = {
@@ -439,63 +299,25 @@ export class InMemoryStore {
     return saved;
   }
 
+  async close(): Promise<void> {
+    // The in-memory store has no external resources to release.
+  }
+
   private seedDemoAccount(): void {
     const user: UserRecord = {
-      id: '10000000-0000-4000-8000-000000000001',
-      workspaceId: '20000000-0000-4000-8000-000000000001',
+      id: DEMO_USER_ID,
+      workspaceId: DEMO_WORKSPACE_ID,
       email: DEMO_EMAIL,
       name: 'Demo User',
       passwordHash: hashPassword(DEMO_PASSWORD),
-      createdAt: '2026-09-01T09:00:00.000Z',
+      createdAt: DEMO_USER_CREATED_AT,
     };
     this.users.set(user.id, user);
     this.seedSites(user.workspaceId, true);
   }
 
   private seedSites(workspaceId: string, fixedIds = false): void {
-    const definitions: Array<{
-      id: string;
-      name: string;
-      status: SiteStatus;
-      templateId: string;
-      customDomain: string | null;
-      publishedAt: string | null;
-      createdAt: string;
-      updatedAt: string;
-    }> = [
-      {
-        id: '30000000-0000-4000-8000-000000000001',
-        name: 'Harbor & Hearth',
-        status: 'live',
-        templateId: 'tmpl-hospitality',
-        customDomain: 'harborandhearth.example',
-        publishedAt: '2026-09-10T15:30:00.000Z',
-        createdAt: '2026-09-01T10:00:00.000Z',
-        updatedAt: '2026-09-10T15:30:00.000Z',
-      },
-      {
-        id: '30000000-0000-4000-8000-000000000002',
-        name: 'Northstar Studio',
-        status: 'draft',
-        templateId: 'tmpl-portfolio',
-        customDomain: null,
-        publishedAt: null,
-        createdAt: '2026-09-04T11:00:00.000Z',
-        updatedAt: '2026-09-11T08:45:00.000Z',
-      },
-      {
-        id: '30000000-0000-4000-8000-000000000003',
-        name: 'Greenway Wellness',
-        status: 'building',
-        templateId: 'tmpl-wellness',
-        customDomain: null,
-        publishedAt: null,
-        createdAt: '2026-09-08T14:20:00.000Z',
-        updatedAt: '2026-09-12T09:20:00.000Z',
-      },
-    ];
-
-    for (const [index, definition] of definitions.entries()) {
+    for (const [index, definition] of SAMPLE_SITE_DEFINITIONS.entries()) {
       const id = fixedIds ? definition.id : randomUUID();
       const slug = slugify(definition.name);
       const site: SiteRecord = {

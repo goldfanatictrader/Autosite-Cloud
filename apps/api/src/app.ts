@@ -17,12 +17,15 @@ import { registerAuthRoutes } from './modules/auth/routes.js';
 import { registerSiteRoutes } from './modules/sites/routes.js';
 import { InMemoryRateLimiter } from './middleware/rate-limit.js';
 import { apiError, HttpError } from './shared/errors.js';
+import { selectStore } from './store/create-store.js';
 import { InMemoryStore } from './store/memory-store.js';
+import type { Store } from './store/store.js';
 
 export interface BuildAppOptions {
+  databaseUrl?: string;
   jwtSecret?: string;
   logger?: FastifyServerOptions['logger'];
-  store?: InMemoryStore;
+  store?: Store;
   webOrigin?: string;
   clock?: () => Date;
   aiProvider?: AiProvider;
@@ -40,9 +43,32 @@ export const buildApp = async (
 ): Promise<FastifyInstance> => {
   const clock = options.clock ?? (() => new Date());
   const app = Fastify({ logger: options.logger ?? false });
-  const store = options.store ?? new InMemoryStore(clock);
+  const selection =
+    options.store === undefined && options.databaseUrl !== undefined
+      ? await selectStore({
+          databaseUrl: options.databaseUrl,
+          clock,
+          onPoolError: (code) => {
+            app.log.error({ code }, 'PostgreSQL pool reported an idle error');
+          },
+        })
+      : undefined;
+  const store = options.store ?? selection?.store ?? new InMemoryStore(clock);
   const aiProvider =
     options.aiProvider ?? createAiProvider(options.aiProviderOptions);
+
+  if (selection?.backend === 'postgres') {
+    app.log.info('Using PostgreSQL persistence');
+  } else if (selection?.backend === 'memory') {
+    app.log.warn(
+      { code: selection.fallbackCode },
+      'PostgreSQL is unavailable; using in-memory persistence',
+    );
+  }
+
+  app.addHook('onClose', async () => {
+    await store.close();
+  });
 
   new InMemoryRateLimiter(() => clock().getTime()).register(app);
 

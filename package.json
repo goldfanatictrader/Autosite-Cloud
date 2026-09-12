@@ -12,6 +12,9 @@
   ],
   "scripts": {
     "build": "turbo run build",
+    "db:migrate": "npm run db:migrate --workspace=@autosite/api",
+    "db:seed": "npm run db:seed --workspace=@autosite/api",
+    "db:up": "npm run db:up --workspace=@autosite/api",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",

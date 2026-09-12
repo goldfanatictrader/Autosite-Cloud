@@ -17,9 +17,9 @@ import { HttpError } from '../../shared/errors.js';
 import { validate } from '../../shared/validation.js';
 import type {
   ContentRecord,
-  InMemoryStore,
   SiteRecord,
-} from '../../store/memory-store.js';
+  Store,
+} from '../../store/store.js';
 
 const SITE_STATUSES = ['draft', 'building', 'live', 'error'] as const;
 const DEFAULT_PAGES = ['home', 'about', 'services', 'contact'] as const;
@@ -182,12 +182,12 @@ const toContentPage = (record: ContentRecord) => ({
   updated_at: record.updatedAt,
 });
 
-const requireSite = (
-  store: InMemoryStore,
+const requireSite = async (
+  store: Store,
   workspaceId: string,
   siteId: string,
-): SiteRecord => {
-  const site = store.getSite(workspaceId, siteId);
+): Promise<SiteRecord> => {
+  const site = await store.getSite(workspaceId, siteId);
   if (site === undefined) {
     throw new HttpError(404, 'Site does not exist', 'SITE_NOT_FOUND', {
       site_id: siteId,
@@ -198,11 +198,11 @@ const requireSite = (
 
 export const registerSiteRoutes = (
   app: FastifyInstance,
-  store: InMemoryStore,
+  store: Store,
 ): void => {
   app.get('/api/sites', { preHandler: authenticate }, async (request, reply) => {
     const query = validate(listSitesQuerySchema, request.query);
-    const allSites = store.listSites(request.user.workspace_id, {
+    const allSites = await store.listSites(request.user.workspace_id, {
       ...(query.status === undefined ? {} : { status: query.status }),
       ...(query.search === undefined ? {} : { search: query.search }),
     });
@@ -219,7 +219,7 @@ export const registerSiteRoutes = (
 
   app.post('/api/sites', { preHandler: authenticate }, async (request, reply) => {
     const body = validate(createSiteSchema, request.body);
-    const site = store.createSite({
+    const site = await store.createSite({
       workspaceId: request.user.workspace_id,
       name: body.name,
       templateId: body.template_id ?? null,
@@ -239,7 +239,7 @@ export const registerSiteRoutes = (
     { preHandler: authenticate },
     async (request, reply) => {
       const params = validate(siteParamsSchema, request.params);
-      const site = requireSite(
+      const site = await requireSite(
         store,
         request.user.workspace_id,
         params.id,
@@ -255,7 +255,7 @@ export const registerSiteRoutes = (
     async (request, reply) => {
       const params = validate(siteParamsSchema, request.params);
       const body = validate(updateSiteSchema, request.body);
-      const site = store.updateSite(
+      const site = await store.updateSite(
         request.user.workspace_id,
         params.id,
         {
@@ -297,7 +297,10 @@ export const registerSiteRoutes = (
     { preHandler: authenticate },
     async (request, reply) => {
       const params = validate(siteParamsSchema, request.params);
-      const deleted = store.deleteSite(request.user.workspace_id, params.id);
+      const deleted = await store.deleteSite(
+        request.user.workspace_id,
+        params.id,
+      );
       if (deleted === undefined) {
         throw new HttpError(404, 'Site does not exist', 'SITE_NOT_FOUND', {
           site_id: params.id,
@@ -318,8 +321,9 @@ export const registerSiteRoutes = (
     { preHandler: authenticate },
     async (request, reply) => {
       const params = validate(siteParamsSchema, request.params);
-      requireSite(store, request.user.workspace_id, params.id);
-      const content = store.listContent(request.user.workspace_id, params.id) ?? [];
+      await requireSite(store, request.user.workspace_id, params.id);
+      const content =
+        (await store.listContent(request.user.workspace_id, params.id)) ?? [];
       const response: SiteContentResponse = {
         pages: content.map(toContentPage),
       };
@@ -332,8 +336,8 @@ export const registerSiteRoutes = (
     { preHandler: authenticate },
     async (request, reply) => {
       const params = validate(contentParamsSchema, request.params);
-      requireSite(store, request.user.workspace_id, params.id);
-      const content = store.getContent(
+      await requireSite(store, request.user.workspace_id, params.id);
+      const content = await store.getContent(
         request.user.workspace_id,
         params.id,
         params.page,
@@ -358,8 +362,8 @@ export const registerSiteRoutes = (
     async (request, reply) => {
       const params = validate(contentParamsSchema, request.params);
       const body = validate(updateContentSchema, request.body);
-      requireSite(store, request.user.workspace_id, params.id);
-      const content = store.saveContent(
+      await requireSite(store, request.user.workspace_id, params.id);
+      const content = await store.saveContent(
         request.user.workspace_id,
         params.id,
         params.page,

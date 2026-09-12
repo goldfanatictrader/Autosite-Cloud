@@ -6,7 +6,8 @@ Turborepo monorepo with a Next.js web app and a Fastify API.
 
 ## Run locally
 
-Prerequisites: Node.js 20 or newer and npm.
+Prerequisites: Node.js 20 or newer and npm. Persistent local mode also requires
+Docker with the Compose plugin.
 
 ```bash
 npm install
@@ -14,17 +15,34 @@ npm run dev
 ```
 
 The dashboard runs at <http://localhost:3000> and the API runs at
-<http://localhost:3001>. Local defaults require no API keys, database, Redis, or
-Docker services. The API uses in-memory persistence for this MVP, so accounts,
-sites, and generated content reset when the API restarts.
+<http://localhost:3001>. The API attempts to connect to PostgreSQL at
+`DATABASE_URL`, which defaults to
+`postgres://autosite:autosite@localhost:5432/autosite`. If PostgreSQL is not
+available, it automatically uses in-memory persistence, so the quick start does
+not require Docker. Data created in the fallback store resets when the API
+restarts.
+
+For persistent local data, start and initialize PostgreSQL before the apps:
+
+```bash
+npm install
+npm run db:up
+npm run db:migrate
+npm run db:seed
+npm run dev
+```
+
+The seed is idempotent and provides the same demo account and three sample sites
+as the in-memory fallback. Set `DATABASE_URL` in the shell to use a different
+PostgreSQL instance.
 
 The login form is prefilled with the demo account:
 `demo@autosite.cloud` / `DemoPass123!`.
 
 Optional environment overrides are documented in [.env.example](.env.example).
-The services in [infra/docker-compose.yml](infra/docker-compose.yml) mirror the
-planned PostgreSQL, Redis, and MinIO stack for later phases, but the MVP does not
-connect to them.
+[infra/docker-compose.yml](infra/docker-compose.yml) provides the PostgreSQL 16
+service used by `db:up`. Redis and MinIO remain defined for later phases but are
+not connected to the Phase 1 API.
 
 ## Workspace
 
@@ -42,6 +60,9 @@ docs/        Product and engineering plans
 Useful root commands:
 
 ```bash
+npm run db:up
+npm run db:migrate
+npm run db:seed
 npm run lint
 npm run typecheck
 npm run test

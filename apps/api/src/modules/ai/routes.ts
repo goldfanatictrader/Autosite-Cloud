@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { authenticate } from '../../shared/authenticate.js';
 import { HttpError } from '../../shared/errors.js';
 import { validate } from '../../shared/validation.js';
-import type { InMemoryStore } from '../../store/memory-store.js';
+import type { Store } from '../../store/store.js';
 import { createAiProvider, type AiProvider } from './provider.js';
 
 const PAGE_SLUGS = ['home', 'about', 'services', 'contact'] as const;
@@ -82,7 +82,7 @@ const suggestSchema = z
 
 export const registerAiRoutes = (
   app: FastifyInstance,
-  store: InMemoryStore,
+  store: Store,
   provider: AiProvider = createAiProvider(),
 ): void => {
   app.post(
@@ -93,14 +93,17 @@ export const registerAiRoutes = (
         generateContentSchema,
         request.body,
       );
-      if (store.getSite(request.user.workspace_id, body.site_id) === undefined) {
+      if (
+        (await store.getSite(request.user.workspace_id, body.site_id)) ===
+        undefined
+      ) {
         throw new HttpError(404, 'Site does not exist', 'SITE_NOT_FOUND', {
           site_id: body.site_id,
         });
       }
 
       const generated = await provider.generateContent(body);
-      const updatedSite = store.updateSite(
+      const updatedSite = await store.updateSite(
         request.user.workspace_id,
         body.site_id,
         {
@@ -115,7 +118,7 @@ export const registerAiRoutes = (
         });
       }
 
-      const savedContent = store.saveGeneratedContent(
+      const savedContent = await store.saveGeneratedContent(
         request.user.workspace_id,
         body.site_id,
         generated.pages,
