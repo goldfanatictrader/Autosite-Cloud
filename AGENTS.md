@@ -1,35 +1,46 @@
 # AGENTS.md
 
-## Current state: documentation only
+## Current state: runnable Phase 1 MVP monorepo
 
-This repository currently contains **no application code**. It holds planning/spec docs (all Draft, v1.0, Sept 2026) for AutoSite Cloud, a mobile-first website builder. There is no `package.json`, no build/test/lint tooling, no CI workflows, and no code to run. Do not assume an app exists or that `npm install`/`npm test` will work.
+Merged on `main` (PR #1). This is no longer docs-only: the repo is a working Turborepo monorepo — `apps/api` (Fastify, TypeScript), `apps/web` (Next.js 14 App Router, Tailwind + shadcn/ui-style components), `packages/shared`, `packages/ui`, `infra/`. The planning docs now live in `docs/` (all Draft, v1.0, Sept 2026).
 
-The docs are the single source of truth for any future implementation:
+**Run / verify (root):**
+
+```bash
+npm install        # npm workspaces (apps/*, packages/*)
+npm run dev        # web :3000, api :3001 (turbo)
+npm run lint       # eslint (per-workspace)
+npm run typecheck  # tsc --noEmit (per-workspace)
+npm run test       # vitest (api + web)
+npm run build      # next build + tsc build
+```
+
+- **No external services needed for MVP.** Persistence is in-memory — accounts, sites, and generated content reset when the API restarts. PostgreSQL/Redis/MinIO in `infra/docker-compose.yml` are planned for later phases and are NOT wired up.
+- Demo account: `demo@autosite.cloud` / `DemoPass123!` (login form is prefilled).
+- CI: `.github/workflows/ci.yml` runs lint → typecheck → test (per ARCHITECTURE §8 shape). Don't invent a different CI shape.
+
+## Docs (single source of truth for product/architecture decisions)
 
 | Doc | Purpose |
 |-----|---------|
-| `prd/PRD.md` | Product requirements, feature priorities, phases, persona flows |
-| `architecture/ARCHITECTURE.md` | Tech stack, service decomposition, monorepo target layout, CI/CD plan, env vars, docker-compose |
-| `database/DATABASE-SCHEMA.md` | PostgreSQL schema: tables, columns, enums, indexes, relationships |
-| `api/API-SPEC.md` | REST endpoints, request/response examples, error envelope |
-| `design-system/DESIGN-SYSTEM.md` | Design tokens (colors, type scale, spacing, radii, shadows), component specs |
-| `user-stories/USER-STORIES.md` | Phased user stories |
+| `docs/PRD.md` | Product requirements, feature priorities, phases, persona flows |
+| `docs/ARCHITECTURE.md` | Tech stack, service decomposition, monorepo target layout, CI/CD plan, env vars, docker-compose |
+| `docs/DATABASE-SCHEMA.md` | PostgreSQL schema: tables, columns, enums, indexes, relationships |
+| `docs/API-SPEC.md` | REST endpoints, request/response examples, error envelope |
+| `docs/DESIGN-SYSTEM.md` | Design tokens (colors, type scale, spacing, radii, shadows), component specs |
+| `docs/USER-STORIES.md` | Phased user stories |
 
-## Conventions to follow when scaffolding code
+## Conventions (what was actually implemented)
 
-- **Target monorepo layout** (from ARCHITECTURE §7): `apps/api` (Fastify, Node 20+), `apps/web` (Next.js 14 App Router, Tailwind + shadcn/ui), `apps/mobile` (React Native/Expo), `packages/shared`, `packages/ui`, `infra/` (docker-compose, k8s, terraform), Turborepo at root. Migrate planning docs into `docs/` when enforcement of the planned tree starts.
-- **Database**: PostgreSQL 16, UUID primary keys (`gen_random_uuid()`), all timestamps `TIMESTAMPTZ` UTC, JSONB for content/analytics payloads. Enum values are pinned in DATABASE-SCHEMA §Enums Summary.
-- **API**: JWT Bearer auth; consistent error envelope `{"error", "code", "details"}`; rate-limit headers (`X-RateLimit-*`); URL-versioned base `https://api.autosite.cloud/v1`.
-- **UI**: Design tokens and hex values are authoritative in `design-system/DESIGN-SYSTEM.md` (Primary `#2563EB`, Inter + JetBrains Mono, 4px spacing base). Preserve token names (`display-lg`, `label-md`, `shadow-md`, etc.).
+- **Monorepo layout** per ARCHITECTURE §7: `apps/api`, `apps/web`, `apps/mobile` (not yet created), `packages/shared`, `packages/ui`, `infra/`, Turborepo at root.
+- **API routes follow `docs/API-SPEC.md`** names, e.g. `/auth/*`, `/api/sites*`, `/api/ai/generate-content`; error envelope `{"error","code","details"}`; `X-RateLimit-*` headers; single JWT bearer `token` (not access+refresh pair — declared deviation from ARCHITECTURE).
+- **UI tokens are authoritative in `docs/DESIGN-SYSTEM.md`** (Primary `#2563EB`, Inter + JetBrains Mono, 4px spacing base). Preserve token names (`display-lg`, `label-md`, `shadow-md`, etc.) and existing shadcn-style components in `packages/ui` rather than restyling inline.
+- **DB (future phases)**: PostgreSQL 16, UUID PKs (`gen_random_uuid()`), `TIMESTAMPTZ` UTC, JSONB payloads. Enum values pinned in DATABASE-SCHEMA §Enums Summary.
 
-## Known doc inconsistencies (docs are drafts — don't treat one as gospel)
+## Known doc inconsistencies (docs are drafts — reconcile against the implemented code)
 
-- **Site status**: PRD/README include `archived`; DATABASE-SCHEMA and API-SPEC use `draft/building/live/error` only.
-- **Auth**: DATABASE-SCHEMA defines `email/google/apple/github` providers; API-SPEC examples show a single `token` field while ARCHITECTURE specifies access + refresh token pairs.
-- **Workspace ownership**: DATABASE-SCHEMA and ARCHITECTURE put sites under `workspaces.owner_id`; PRD shows owner directly on the site.
-- **API paths**: API-SPEC prefixes endpoints with `/api/` (e.g. `/api/sites/:id/publish`) and uses `/api/ai/*`; ARCHITECTURE uses un-prefixed paths and different `/ai/*` endpoint names.
-- When implementing, reconcile these against ARCHITECTURE + DATABASE-SCHEMA first, and flag the resolution rather than silently picking one.
-
-## Verification
-
-There are no tests or lint commands yet. If you add code, the plan (ARCHITECTURE §8) expects GitHub Actions: `lint → typecheck → test → docker build → deploy-staging → deploy-production (manual)`. Don't invent a different CI shape without checking.
+- **Site status**: PRD/README include `archived`; DATABASE-SCHEMA and API-SPEC use `draft/building/live/error` only (implemented).
+- **Auth**: DATABASE-SCHEMA defines `email/google/apple/github` providers; API-SPEC shows a single `token` while ARCHITECTURE specifies access + refresh token pairs (implemented: single token).
+- **Workspace ownership**: DATABASE-SCHEMA/ARCHITECTURE put sites under `workspaces.owner_id`; PRD shows owner directly on the site.
+- **API paths**: API-SPEC prefixes `/api/` (e.g. `/api/sites/:id/publish`) and uses `/api/ai/*`; ARCHITECTURE uses un-prefixed paths and different `/ai/*` endpoint names (implemented: API-SPEC names).
+- When changing code, update the implementation to remain consistent with the implemented routing/auth decisions above, and update `docs/` only if the product decision actually changes.
