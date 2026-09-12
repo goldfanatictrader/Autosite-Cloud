@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Clock3, MapPin, Phone } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Card, cn } from "@autosite/ui";
 
@@ -13,15 +13,21 @@ import {
 } from "@/lib/content";
 import type { ContentItem, ContentSection, GeneratedPages } from "@/lib/types";
 
-export function ContentPreview({ pages }: { pages: GeneratedPages }) {
-  const slugs = useMemo(() => orderedPageSlugs(pages), [pages]);
-  const [activePage, setActivePage] = useState(slugs[0] ?? "");
+interface ContentPreviewProps {
+  pages: GeneratedPages;
+  activePage?: string;
+  onActivePageChange?: (slug: string) => void;
+  showPageTabs?: boolean;
+}
 
-  useEffect(() => {
-    if (!pages[activePage]) {
-      setActivePage(slugs[0] ?? "");
-    }
-  }, [activePage, pages, slugs]);
+export function ContentPreview({
+  pages,
+  activePage,
+  onActivePageChange,
+  showPageTabs = true,
+}: ContentPreviewProps) {
+  const slugs = useMemo(() => orderedPageSlugs(pages), [pages]);
+  const [internalActivePage, setInternalActivePage] = useState(slugs[0] ?? "");
 
   if (slugs.length === 0) {
     return (
@@ -31,43 +37,54 @@ export function ContentPreview({ pages }: { pages: GeneratedPages }) {
     );
   }
 
-  const page = pages[activePage] ?? pages[slugs[0]];
+  const selectedPage =
+    (activePage && pages[activePage] ? activePage : null) ??
+    (pages[internalActivePage] ? internalActivePage : slugs[0]);
+  const page = pages[selectedPage];
+
+  function selectPage(slug: string): void {
+    setInternalActivePage(slug);
+    onActivePageChange?.(slug);
+  }
 
   return (
     <div>
-      <div
-        className="mb-4 flex gap-2 overflow-x-auto pb-1"
-        role="tablist"
-        aria-label="Generated pages"
-      >
-        {slugs.map((slug) => {
-          const isActive = slug === activePage;
-          return (
-            <button
-              key={slug}
-              type="button"
-              role="tab"
-              id={`tab-${slug}`}
-              aria-selected={isActive}
-              aria-controls={`panel-${slug}`}
-              onClick={() => setActivePage(slug)}
-              className={cn(
-                "min-h-11 shrink-0 rounded-md border px-4 text-label-lg transition",
-                isActive
-                  ? "border-primary bg-primary text-white"
-                  : "border-border bg-surface text-text-secondary hover:border-primary hover:text-primary",
-              )}
-            >
-              {labelForSlug(slug)}
-            </button>
-          );
-        })}
-      </div>
+      {showPageTabs ? (
+        <div
+          className="mb-4 flex gap-2 overflow-x-auto pb-1"
+          role="tablist"
+          aria-label="Generated pages"
+        >
+          {slugs.map((slug) => {
+            const isActive = slug === selectedPage;
+            return (
+              <button
+                key={slug}
+                type="button"
+                role="tab"
+                id={`tab-${slug}`}
+                aria-selected={isActive}
+                aria-controls={`panel-${slug}`}
+                onClick={() => selectPage(slug)}
+                className={cn(
+                  "min-h-11 shrink-0 rounded-md border px-4 text-label-lg transition",
+                  isActive
+                    ? "border-primary bg-primary text-white"
+                    : "border-border bg-surface text-text-secondary hover:border-primary hover:text-primary",
+                )}
+              >
+                {labelForSlug(slug)}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       <Card
-        role="tabpanel"
-        id={`panel-${activePage}`}
-        aria-labelledby={`tab-${activePage}`}
+        role={showPageTabs ? "tabpanel" : "region"}
+        id={showPageTabs ? `panel-${selectedPage}` : undefined}
+        aria-labelledby={showPageTabs ? `tab-${selectedPage}` : undefined}
+        aria-label={showPageTabs ? undefined : `${labelForSlug(selectedPage)} live preview`}
         className="overflow-hidden p-0 shadow-md"
       >
         <div className="flex h-9 items-center gap-1.5 border-b border-border bg-muted px-4">
@@ -75,7 +92,7 @@ export function ContentPreview({ pages }: { pages: GeneratedPages }) {
           <span className="size-2.5 rounded-full bg-warning" aria-hidden="true" />
           <span className="size-2.5 rounded-full bg-success" aria-hidden="true" />
           <span className="ml-2 truncate font-mono text-label-sm text-text-secondary">
-            your-site.autosite.cloud/{activePage === "home" ? "" : activePage}
+            your-site.autosite.cloud/{selectedPage === "home" ? "" : selectedPage}
           </span>
         </div>
 
@@ -131,6 +148,11 @@ function SectionPreview({ section, index }: { section: ContentSection; index: nu
           <ContactRow icon="phone" value={stringValue(section, "phone")} />
           <ContactRow icon="clock" value={stringValue(section, "hours")} />
         </div>
+        {cta ? (
+          <span className="mt-6 inline-flex h-12 items-center rounded-md bg-primary px-6 text-label-lg text-white shadow-sm">
+            {cta}
+          </span>
+        ) : null}
       </section>
     );
   }

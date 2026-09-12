@@ -83,6 +83,16 @@ export interface SiteContentResponse {
   pages: SiteContentPage[];
 }
 
+export interface UpdateSiteContentRequest {
+  content_json: PageContent;
+}
+
+export interface UpdateSiteContentResponse {
+  page_slug: PageSlug;
+  version: number;
+  updated_at: string;
+}
+
 export interface GenerateContentRequest {
   site_id: string;
   brief: string;

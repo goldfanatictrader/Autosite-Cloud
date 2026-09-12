@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
 import type {
+  Language,
   PageContent,
   PageSlug,
   SiteSettings,
   SiteStatus,
+  Tone,
 } from '@autosite/shared';
 
 import { hashPassword } from '../shared/password.js';
@@ -26,13 +28,17 @@ export interface SiteRecord {
   workspaceId: string;
   name: string;
   slug: string;
-  description: string | null;
+  brief: string | null;
+  tone: Tone;
+  language: Language;
   status: SiteStatus;
   templateId: string | null;
   customDomain: string | null;
   subdomain: string;
   settings: SiteSettings;
   publishedAt: string | null;
+  deletedAt: string | null;
+  restoreBefore: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,7 +63,21 @@ interface CreateSiteInput {
   workspaceId: string;
   name: string;
   templateId: string | null;
-  description?: string | null;
+  brief?: string | null;
+}
+
+interface UpdateSiteInput {
+  name?: string;
+  brief?: string | null;
+  tone?: Tone;
+  language?: Language;
+  status?: SiteStatus;
+  settings?: SiteSettings;
+}
+
+export interface DeletedSiteRecord {
+  deletedAt: string;
+  restoreBefore: string;
 }
 
 interface SiteQuery {
@@ -206,7 +226,9 @@ export class InMemoryStore {
   listSites(workspaceId: string, query: SiteQuery = {}): SiteRecord[] {
     const normalizedSearch = query.search?.trim().toLowerCase();
     return [...this.sites.values()]
-      .filter((site) => site.workspaceId === workspaceId)
+      .filter(
+        (site) => site.workspaceId === workspaceId && site.deletedAt === null,
+      )
       .filter((site) => query.status === undefined || site.status === query.status)
       .filter(
         (site) =>
@@ -218,7 +240,9 @@ export class InMemoryStore {
 
   getSite(workspaceId: string, siteId: string): SiteRecord | undefined {
     const site = this.sites.get(siteId);
-    return site?.workspaceId === workspaceId ? site : undefined;
+    return site?.workspaceId === workspaceId && site.deletedAt === null
+      ? site
+      : undefined;
   }
 
   createSite(input: CreateSiteInput): SiteRecord {
@@ -242,13 +266,17 @@ export class InMemoryStore {
       workspaceId: input.workspaceId,
       name: input.name.trim(),
       slug,
-      description: input.description ?? null,
+      brief: input.brief ?? null,
+      tone: 'professional',
+      language: 'en',
       status: 'draft',
       templateId: input.templateId,
       customDomain: null,
       subdomain: `${slug}.autosite.cloud`,
       settings: {},
       publishedAt: null,
+      deletedAt: null,
+      restoreBefore: null,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -256,6 +284,66 @@ export class InMemoryStore {
     this.sites.set(id, record);
     this.contents.set(id, new Map());
     return record;
+  }
+
+  updateSite(
+    workspaceId: string,
+    siteId: string,
+    input: UpdateSiteInput,
+  ): SiteRecord | undefined {
+    const site = this.getSite(workspaceId, siteId);
+    if (site === undefined) {
+      return undefined;
+    }
+
+    const timestamp = this.clock().toISOString();
+    if (input.name !== undefined) {
+      site.name = input.name.trim();
+    }
+    if (input.brief !== undefined) {
+      site.brief = input.brief;
+    }
+    if (input.tone !== undefined) {
+      site.tone = input.tone;
+    }
+    if (input.language !== undefined) {
+      site.language = input.language;
+    }
+    if (input.status !== undefined) {
+      site.status = input.status;
+      if (input.status === 'live' && site.publishedAt === null) {
+        site.publishedAt = timestamp;
+      }
+    }
+    if (input.settings !== undefined) {
+      site.settings = { ...site.settings, ...input.settings };
+    }
+    site.updatedAt = timestamp;
+    return site;
+  }
+
+  deleteSite(
+    workspaceId: string,
+    siteId: string,
+  ): DeletedSiteRecord | undefined {
+    if (this.getSite(workspaceId, siteId) === undefined) {
+      return undefined;
+    }
+
+    const deletedAt = this.clock();
+    const restoreBefore = new Date(deletedAt);
+    restoreBefore.setUTCDate(restoreBefore.getUTCDate() + 30);
+    const site = this.sites.get(siteId);
+    if (site === undefined) {
+      return undefined;
+    }
+    site.deletedAt = deletedAt.toISOString();
+    site.restoreBefore = restoreBefore.toISOString();
+    site.updatedAt = site.deletedAt;
+    return {
+      deletedAt: site.deletedAt,
+      restoreBefore: site.restoreBefore,
+    };
   }
 
   listContent(workspaceId: string, siteId: string): ContentRecord[] | undefined {
@@ -272,6 +360,45 @@ export class InMemoryStore {
       const record = siteContent.get(pageSlug);
       return record === undefined ? [] : [record];
     });
+  }
+
+  getContent(
+    workspaceId: string,
+    siteId: string,
+    pageSlug: PageSlug,
+  ): ContentRecord | undefined {
+    if (this.getSite(workspaceId, siteId) === undefined) {
+      return undefined;
+    }
+    return this.contents.get(siteId)?.get(pageSlug);
+  }
+
+  saveContent(
+    workspaceId: string,
+    siteId: string,
+    pageSlug: PageSlug,
+    content: PageContent,
+  ): ContentRecord | undefined {
+    const site = this.getSite(workspaceId, siteId);
+    if (site === undefined) {
+      return undefined;
+    }
+
+    const timestamp = this.clock().toISOString();
+    const siteContent = this.contents.get(siteId) ?? new Map();
+    const previous = siteContent.get(pageSlug);
+    const record: ContentRecord = {
+      siteId,
+      pageSlug,
+      content,
+      aiGenerated: false,
+      version: (previous?.version ?? 0) + 1,
+      updatedAt: timestamp,
+    };
+    siteContent.set(pageSlug, record);
+    this.contents.set(siteId, siteContent);
+    site.updatedAt = timestamp;
+    return record;
   }
 
   saveGeneratedContent(
@@ -376,7 +503,9 @@ export class InMemoryStore {
         workspaceId,
         name: definition.name,
         slug,
-        description: `${definition.name} sample site`,
+        brief: `${definition.name} sample site`,
+        tone: 'professional',
+        language: 'en',
         status: definition.status,
         templateId: definition.templateId,
         customDomain: definition.customDomain,
@@ -386,6 +515,8 @@ export class InMemoryStore {
           meta_description: `Discover ${definition.name}, services, story, and contact details.`,
         },
         publishedAt: definition.publishedAt,
+        deletedAt: null,
+        restoreBefore: null,
         createdAt: fixedIds ? definition.createdAt : this.clock().toISOString(),
         updatedAt: fixedIds
           ? definition.updatedAt

@@ -1,9 +1,13 @@
 import type {
   CreateSiteResponse,
+  DeleteSiteResponse,
+  PageContent,
   Site,
+  SiteContentPage,
   SiteContentResponse,
   SiteResponse,
   SitesResponse,
+  UpdateSiteContentResponse,
 } from '@autosite/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -38,9 +42,124 @@ const createSiteSchema = z
 
 const siteParamsSchema = z.object({ id: z.string().uuid() }).strict();
 
+const updateSiteSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Site name is required').max(255).optional(),
+    brief: z
+      .string()
+      .trim()
+      .min(10, 'Brief must be at least 10 characters')
+      .max(300, 'Brief must be at most 300 characters')
+      .nullable()
+      .optional(),
+    tone: z
+      .enum([
+        'professional',
+        'friendly',
+        'luxury',
+        'casual',
+        'bold',
+        'formal',
+        'playful',
+        'minimal',
+      ])
+      .optional(),
+    language: z
+      .enum(['en', 'es', 'fr', 'de', 'pt', 'it', 'ja', 'ko', 'zh', 'nl'])
+      .optional(),
+    status: z.enum(SITE_STATUSES).optional(),
+    settings: z
+      .object({
+        favicon_url: z.string().trim().url().max(2048).optional(),
+        meta_title: z.string().trim().min(1).max(255).optional(),
+        meta_description: z.string().trim().min(1).max(500).optional(),
+      })
+      .strict()
+      .refine((settings) => Object.keys(settings).length > 0, {
+        message: 'Provide at least one setting',
+      })
+      .optional(),
+  })
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, {
+    message: 'Provide at least one site field to update',
+  });
+
+const contentParamsSchema = z
+  .object({
+    id: z.string().uuid(),
+    page: z.enum(DEFAULT_PAGES),
+  })
+  .strict();
+
+const contentItemSchema = z
+  .object({
+    title: z.string().trim().min(1).max(255),
+    description: z.string().trim().min(1).max(5000),
+  })
+  .strict();
+
+const heroSectionSchema = z
+  .object({
+    type: z.literal('hero'),
+    heading: z.string().trim().min(1).max(255),
+    subheading: z.string().trim().min(1).max(5000),
+    cta_text: z.string().trim().min(1).max(255).optional(),
+    background_image: z.string().trim().url().max(2048).optional(),
+  })
+  .strict();
+
+const itemSectionFields = {
+  heading: z.string().trim().min(1).max(255).optional(),
+  items: z.array(contentItemSchema).min(1).max(20),
+};
+
+const featuresSectionSchema = z
+  .object({ type: z.literal('features'), ...itemSectionFields })
+  .strict();
+
+const servicesSectionSchema = z
+  .object({ type: z.literal('services'), ...itemSectionFields })
+  .strict();
+
+const contactSectionSchema = z
+  .object({
+    type: z.literal('contact'),
+    heading: z.string().trim().min(1).max(255),
+    subheading: z.string().trim().min(1).max(5000).optional(),
+    address: z.string().trim().min(1).max(1000),
+    phone: z.string().trim().min(1).max(100),
+    hours: z.string().trim().min(1).max(1000),
+    cta_text: z.string().trim().min(1).max(255).optional(),
+  })
+  .strict();
+
+const updateContentSchema = z
+  .object({
+    content_json: z
+      .object({
+        sections: z
+          .array(
+            z.discriminatedUnion('type', [
+              heroSectionSchema,
+              featuresSectionSchema,
+              servicesSectionSchema,
+              contactSectionSchema,
+            ]),
+          )
+          .min(1, 'Content must include at least one section')
+          .max(20),
+      })
+      .strict(),
+  })
+  .strict();
+
 const toSite = (record: SiteRecord, detailed = false): Site => ({
   id: record.id,
   name: record.name,
+  brief: record.brief,
+  tone: record.tone,
+  language: record.language,
   status: record.status,
   template_id: record.templateId,
   custom_domain: record.customDomain,
@@ -130,6 +249,70 @@ export const registerSiteRoutes = (
     },
   );
 
+  app.put(
+    '/api/sites/:id',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const params = validate(siteParamsSchema, request.params);
+      const body = validate(updateSiteSchema, request.body);
+      const site = store.updateSite(
+        request.user.workspace_id,
+        params.id,
+        {
+          ...(body.name === undefined ? {} : { name: body.name }),
+          ...(body.brief === undefined ? {} : { brief: body.brief }),
+          ...(body.tone === undefined ? {} : { tone: body.tone }),
+          ...(body.language === undefined ? {} : { language: body.language }),
+          ...(body.status === undefined ? {} : { status: body.status }),
+          ...(body.settings === undefined
+            ? {}
+            : {
+                settings: {
+                  ...(body.settings.favicon_url === undefined
+                    ? {}
+                    : { favicon_url: body.settings.favicon_url }),
+                  ...(body.settings.meta_title === undefined
+                    ? {}
+                    : { meta_title: body.settings.meta_title }),
+                  ...(body.settings.meta_description === undefined
+                    ? {}
+                    : { meta_description: body.settings.meta_description }),
+                },
+              }),
+        },
+      );
+      if (site === undefined) {
+        throw new HttpError(404, 'Site does not exist', 'SITE_NOT_FOUND', {
+          site_id: params.id,
+        });
+      }
+
+      const response: SiteResponse = { site: toSite(site, true) };
+      return reply.send(response);
+    },
+  );
+
+  app.delete(
+    '/api/sites/:id',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const params = validate(siteParamsSchema, request.params);
+      const deleted = store.deleteSite(request.user.workspace_id, params.id);
+      if (deleted === undefined) {
+        throw new HttpError(404, 'Site does not exist', 'SITE_NOT_FOUND', {
+          site_id: params.id,
+        });
+      }
+
+      const response: DeleteSiteResponse = {
+        message: 'Site moved to trash',
+        deleted_at: deleted.deletedAt,
+        restore_before: deleted.restoreBefore,
+      };
+      return reply.send(response);
+    },
+  );
+
   app.get(
     '/api/sites/:id/content',
     { preHandler: authenticate },
@@ -139,6 +322,59 @@ export const registerSiteRoutes = (
       const content = store.listContent(request.user.workspace_id, params.id) ?? [];
       const response: SiteContentResponse = {
         pages: content.map(toContentPage),
+      };
+      return reply.send(response);
+    },
+  );
+
+  app.get(
+    '/api/sites/:id/content/:page',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const params = validate(contentParamsSchema, request.params);
+      requireSite(store, request.user.workspace_id, params.id);
+      const content = store.getContent(
+        request.user.workspace_id,
+        params.id,
+        params.page,
+      );
+      if (content === undefined) {
+        throw new HttpError(
+          404,
+          'Page content does not exist',
+          'CONTENT_NOT_FOUND',
+          { site_id: params.id, page: params.page },
+        );
+      }
+
+      const response: SiteContentPage = toContentPage(content);
+      return reply.send(response);
+    },
+  );
+
+  app.put(
+    '/api/sites/:id/content/:page',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const params = validate(contentParamsSchema, request.params);
+      const body = validate(updateContentSchema, request.body);
+      requireSite(store, request.user.workspace_id, params.id);
+      const content = store.saveContent(
+        request.user.workspace_id,
+        params.id,
+        params.page,
+        body.content_json as PageContent,
+      );
+      if (content === undefined) {
+        throw new HttpError(404, 'Site does not exist', 'SITE_NOT_FOUND', {
+          site_id: params.id,
+        });
+      }
+
+      const response: UpdateSiteContentResponse = {
+        page_slug: content.pageSlug,
+        version: content.version,
+        updated_at: content.updatedAt,
       };
       return reply.send(response);
     },

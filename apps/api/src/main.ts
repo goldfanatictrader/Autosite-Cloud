@@ -6,6 +6,7 @@ const app = await buildApp({
   jwtSecret: config.jwtSecret,
   logger: true,
   webOrigin: config.webOrigin,
+  aiProviderOptions: config.aiProvider,
 });
 
 const shutdown = async (signal: string): Promise<void> => {

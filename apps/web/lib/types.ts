@@ -76,6 +76,12 @@ export interface SiteContentResponse {
   pages: StoredPageContent[];
 }
 
+export interface UpdatePageContentResponse {
+  page_slug: string;
+  version: number;
+  updated_at: string;
+}
+
 export type GeneratedPages = Record<string, PageContent>;
 
 export interface GenerateContentResponse {
