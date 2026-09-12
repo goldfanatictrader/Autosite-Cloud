@@ -5,7 +5,11 @@ import { z } from 'zod';
 import { HttpError } from '../../shared/errors.js';
 import { verifyPassword } from '../../shared/password.js';
 import { validate } from '../../shared/validation.js';
-import type { InMemoryStore, UserRecord } from '../../store/memory-store.js';
+import {
+  EmailAlreadyExistsError,
+  type Store,
+  type UserRecord,
+} from '../../store/store.js';
 
 const signupSchema = z
   .object({
@@ -41,19 +45,27 @@ const issueToken = (app: FastifyInstance, user: UserRecord): string =>
 
 export const registerAuthRoutes = (
   app: FastifyInstance,
-  store: InMemoryStore,
+  store: Store,
 ): void => {
   app.post('/auth/signup', async (request, reply) => {
     const body = validate(signupSchema, request.body);
-    if (store.findUserByEmail(body.email) !== undefined) {
+    if ((await store.findUserByEmail(body.email)) !== undefined) {
       throw new HttpError(409, 'Email already registered', 'EMAIL_EXISTS');
     }
 
-    const user = store.createUser({
-      email: body.email,
-      password: body.password,
-      name: body.name,
-    });
+    let user: UserRecord;
+    try {
+      user = await store.createUser({
+        email: body.email,
+        password: body.password,
+        name: body.name,
+      });
+    } catch (error) {
+      if (error instanceof EmailAlreadyExistsError) {
+        throw new HttpError(409, 'Email already registered', 'EMAIL_EXISTS');
+      }
+      throw error;
+    }
     const response: AuthResponse = {
       user: publicUser(user, true),
       token: issueToken(app, user),
@@ -64,7 +76,7 @@ export const registerAuthRoutes = (
 
   app.post('/auth/login', async (request, reply) => {
     const body = validate(loginSchema, request.body);
-    const user = store.findUserByEmail(body.email);
+    const user = await store.findUserByEmail(body.email);
 
     if (user === undefined || !verifyPassword(body.password, user.passwordHash)) {
       throw new HttpError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');

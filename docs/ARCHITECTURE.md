@@ -742,9 +742,10 @@ git clone https://github.com/autosite/cloud.git
 cd cloud
 
 # 2. Backend setup
-docker compose up -d postgres redis minio
 npm install
-cp .env.example .env
+npm run db:up
+npm run db:migrate
+npm run db:seed
 npm run dev
 
 # 3. Mobile app setup (separate terminal)
@@ -756,10 +757,12 @@ cd web
 npm install
 npm run dev  # Next.js on http://localhost:3000
 
-# 5. Run database migrations
-npm run db:migrate
-npm run db:seed  # Optional: seed demo data
 ```
+
+The Phase 1 API uses PostgreSQL when it can connect to `DATABASE_URL` and falls
+back to its in-memory store when PostgreSQL is unavailable. Redis and MinIO are
+not wired into the Phase 1 API. Export non-default environment overrides in the
+shell before running the API; `.env.example` documents the available values.
 
 ### Docker Compose (Development)
 
@@ -773,9 +776,14 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: autosite_dev
+      POSTGRES_DB: autosite
       POSTGRES_USER: autosite
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: autosite
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autosite -d autosite"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -808,7 +816,7 @@ volumes:
 # .env.example
 
 # ─── Database ───
-DATABASE_URL=postgresql://autosite:devpassword@localhost:5432/autosite_dev
+DATABASE_URL=postgres://autosite:autosite@localhost:5432/autosite
 
 # ─── Redis ───
 REDIS_URL=redis://:devpassword@localhost:6379

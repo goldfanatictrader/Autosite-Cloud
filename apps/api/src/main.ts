@@ -3,6 +3,7 @@ import { loadConfig } from './config.js';
 
 const config = loadConfig();
 const app = await buildApp({
+  databaseUrl: config.databaseUrl,
   jwtSecret: config.jwtSecret,
   logger: true,
   webOrigin: config.webOrigin,

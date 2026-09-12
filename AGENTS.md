@@ -15,11 +15,19 @@ npm run test       # vitest (api + web)
 npm run build      # next build + tsc build
 ```
 
+**Persistent local database (root):**
+
+```bash
+npm run db:up       # start the PostgreSQL 16 service
+npm run db:migrate  # apply pending ordered SQL migrations
+npm run db:seed     # idempotently seed the demo account and sample sites
+```
+
 - **Sandbox gotcha**: API defaults to `HOST=0.0.0.0`; in restricted sandboxes the bind crashes with `uv_interface_addresses` (EACCES). Run `HOST=127.0.0.1 npm run dev` there. No code change needed — this is host-environment-specific.
 
-- **No external services needed for MVP.** Persistence is in-memory — accounts, sites, and generated content reset when the API restarts. PostgreSQL/Redis/MinIO in `infra/docker-compose.yml` are planned for later phases and are NOT wired up.
+- **PostgreSQL is optional for local development.** The API attempts `DATABASE_URL` (default `postgres://autosite:autosite@localhost:5432/autosite`) and uses the PostgreSQL store when it can connect. Otherwise it automatically falls back to the in-memory store, where accounts, sites, and generated content reset when the API restarts. Redis and MinIO remain defined in `infra/docker-compose.yml` for later phases and are NOT wired up.
 - Demo account: `demo@autosite.cloud` / `DemoPass123!` (login form is prefilled).
-- CI: `.github/workflows/ci.yml` runs lint → typecheck → test (per ARCHITECTURE §8 shape). Don't invent a different CI shape.
+- CI: `.github/workflows/ci.yml` runs lint → typecheck → test (per ARCHITECTURE §8 shape). The test job starts PostgreSQL, migrates and seeds it, then runs both the existing tests and PostgreSQL store integration tests. Don't invent a different CI shape.
 
 ## Docs (single source of truth for product/architecture decisions)
 
@@ -37,7 +45,7 @@ npm run build      # next build + tsc build
 - **Monorepo layout** per ARCHITECTURE §7: `apps/api`, `apps/web`, `apps/mobile` (not yet created), `packages/shared`, `packages/ui`, `infra/`, Turborepo at root.
 - **API routes follow `docs/API-SPEC.md`** names, e.g. `/auth/*`, `/api/sites*`, `/api/ai/generate-content`; error envelope `{"error","code","details"}`; `X-RateLimit-*` headers; single JWT bearer `token` (not access+refresh pair — declared deviation from ARCHITECTURE).
 - **UI tokens are authoritative in `docs/DESIGN-SYSTEM.md`** (Primary `#2563EB`, Inter + JetBrains Mono, 4px spacing base). Preserve token names (`display-lg`, `label-md`, `shadow-md`, etc.) and existing shadcn-style components in `packages/ui` rather than restyling inline.
-- **DB (future phases)**: PostgreSQL 16, UUID PKs (`gen_random_uuid()`), `TIMESTAMPTZ` UTC, JSONB payloads. Enum values pinned in DATABASE-SCHEMA §Enums Summary.
+- **DB**: PostgreSQL 16 is the optional persistent store, with an automatic in-memory startup fallback. It uses UUID PKs (`gen_random_uuid()`), `TIMESTAMPTZ` UTC, and JSONB payloads. Enum values are pinned in DATABASE-SCHEMA §Enums Summary.
 
 ## Known doc inconsistencies (docs are drafts — reconcile against the implemented code)
 
