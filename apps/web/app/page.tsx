@@ -11,15 +11,22 @@ import { ErrorState, PageLoading } from "@/components/page-state";
 import { SiteCard } from "@/components/site-card";
 import { useRequireAuth } from "@/hooks/use-require-auth";
 import { apiFetch, getErrorMessage } from "@/lib/api";
-import type { SitesResponse, SiteStatus } from "@/lib/types";
+import { filterSites, type SiteStatusFilter } from "@/lib/sites";
+import type { SitesResponse } from "@/lib/types";
 
-type StatusFilter = "all" | SiteStatus;
+const STATUS_FILTERS: Array<{ label: string; value: SiteStatusFilter }> = [
+  { label: "All", value: "all" },
+  { label: "Draft", value: "draft" },
+  { label: "Building", value: "building" },
+  { label: "Live", value: "live" },
+  { label: "Error", value: "error" },
+];
 
 export default function DashboardPage() {
   const authenticated = useRequireAuth();
   const [sites, setSites] = useState<SitesResponse["sites"]>([]);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
+  const [status, setStatus] = useState<SiteStatusFilter>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,14 +58,10 @@ export default function DashboardPage() {
     return () => window.clearInterval(poller);
   }, [authenticated, loadSites]);
 
-  const filteredSites = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase();
-    return sites.filter((site) => {
-      const matchesName = !normalizedQuery || site.name.toLocaleLowerCase().includes(normalizedQuery);
-      const matchesStatus = status === "all" || site.status === status;
-      return matchesName && matchesStatus;
-    });
-  }, [query, sites, status]);
+  const filteredSites = useMemo(
+    () => filterSites(sites, query, status),
+    [query, sites, status],
+  );
 
   if (!authenticated || loading) {
     return <PageLoading />;
@@ -87,8 +90,8 @@ export default function DashboardPage() {
         <h2 id="sites-heading" className="sr-only">
           Sites
         </h2>
-        <div className="grid gap-3 rounded-lg border border-border bg-surface p-3 shadow-sm sm:grid-cols-[1fr_180px] sm:p-4">
-          <div className="relative">
+        <div className="rounded-lg border border-border bg-surface p-3 shadow-sm sm:p-4">
+          <div className="relative max-w-2xl">
             <Search
               className="pointer-events-none absolute left-4 top-3.5 size-5 text-placeholder"
               aria-hidden="true"
@@ -102,20 +105,24 @@ export default function DashboardPage() {
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
-          <label>
-            <span className="sr-only">Filter sites by status</span>
-            <select
-              value={status}
-              onChange={(event) => setStatus(event.target.value as StatusFilter)}
-              className="h-12 w-full rounded-md border border-border bg-surface px-4 text-body-lg text-text-primary outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
-            >
-              <option value="all">All statuses</option>
-              <option value="draft">Draft</option>
-              <option value="building">Building</option>
-              <option value="live">Live</option>
-              <option value="error">Error</option>
-            </select>
-          </label>
+          <div
+            className="mt-3 flex gap-2 overflow-x-auto pb-1"
+            role="group"
+            aria-label="Filter sites by status"
+          >
+            {STATUS_FILTERS.map((filter) => (
+              <Button
+                key={filter.value}
+                variant={status === filter.value ? "primary" : "secondary"}
+                size="compact"
+                className="shrink-0 rounded-full"
+                aria-pressed={status === filter.value}
+                onClick={() => setStatus(filter.value)}
+              >
+                {filter.label}
+              </Button>
+            ))}
+          </div>
         </div>
 
         {error ? (

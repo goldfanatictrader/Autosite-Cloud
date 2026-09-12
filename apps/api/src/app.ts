@@ -7,6 +7,11 @@ import Fastify, {
 
 import type { HealthResponse } from '@autosite/shared';
 
+import {
+  createAiProvider,
+  type AiProvider,
+  type AiProviderOptions,
+} from './modules/ai/provider.js';
 import { registerAiRoutes } from './modules/ai/routes.js';
 import { registerAuthRoutes } from './modules/auth/routes.js';
 import { registerSiteRoutes } from './modules/sites/routes.js';
@@ -20,13 +25,15 @@ export interface BuildAppOptions {
   store?: InMemoryStore;
   webOrigin?: string;
   clock?: () => Date;
+  aiProvider?: AiProvider;
+  aiProviderOptions?: AiProviderOptions;
 }
 
-const isMalformedJson = (error: unknown): boolean =>
+const hasErrorCode = (error: unknown, code: string): boolean =>
   typeof error === 'object' &&
   error !== null &&
   'code' in error &&
-  error.code === 'FST_ERR_CTP_INVALID_JSON_BODY';
+  error.code === code;
 
 export const buildApp = async (
   options: BuildAppOptions = {},
@@ -34,6 +41,8 @@ export const buildApp = async (
   const clock = options.clock ?? (() => new Date());
   const app = Fastify({ logger: options.logger ?? false });
   const store = options.store ?? new InMemoryStore(clock);
+  const aiProvider =
+    options.aiProvider ?? createAiProvider(options.aiProviderOptions);
 
   new InMemoryRateLimiter(() => clock().getTime()).register(app);
 
@@ -54,10 +63,16 @@ export const buildApp = async (
       return reply.status(error.statusCode).send(error.toResponse());
     }
 
-    if (isMalformedJson(error)) {
+    if (hasErrorCode(error, 'FST_ERR_CTP_INVALID_JSON_BODY')) {
       return reply
         .status(400)
         .send(apiError('Malformed JSON request body', 'MALFORMED_JSON'));
+    }
+
+    if (hasErrorCode(error, 'FST_ERR_CTP_BODY_TOO_LARGE')) {
+      return reply
+        .status(413)
+        .send(apiError('Request body is too large', 'PAYLOAD_TOO_LARGE'));
     }
 
     request.log.error({ err: error }, 'Unhandled request error');
@@ -78,7 +93,7 @@ export const buildApp = async (
 
   registerAuthRoutes(app, store);
   registerSiteRoutes(app, store);
-  registerAiRoutes(app, store);
+  registerAiRoutes(app, store, aiProvider);
 
   return app;
 };

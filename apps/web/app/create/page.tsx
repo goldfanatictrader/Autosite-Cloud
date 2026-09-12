@@ -286,7 +286,7 @@ export default function CreatePage() {
 
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-body-sm text-text-secondary">
-              Content is generated locally for this MVP—no API key needed.
+              AI drafts stay editable, and generation works without extra setup.
             </p>
             <Button type="submit" disabled={submitting || brief.trim().length < 10}>
               {submitting ? (
@@ -330,7 +330,7 @@ export default function CreatePage() {
               </h2>
               {tokensUsed !== null ? (
                 <p className="mt-1 font-mono text-body-sm text-text-secondary">
-                  Deterministic mock · {tokensUsed.toLocaleString()} estimated tokens
+                  AI draft · {tokensUsed.toLocaleString()} tokens used
                 </p>
               ) : null}
             </div>

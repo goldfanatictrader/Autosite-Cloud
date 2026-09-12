@@ -1,8 +1,11 @@
+import type { AiProviderOptions } from './modules/ai/provider.js';
+
 export interface AppConfig {
   host: string;
   port: number;
   jwtSecret: string;
   webOrigin: string;
+  aiProvider: AiProviderOptions;
 }
 
 const parsePort = (value: string | undefined): number => {
@@ -25,4 +28,18 @@ export const loadConfig = (): AppConfig => ({
     process.env['JWT_SECRET'] ??
     'autosite-local-development-secret-change-before-production',
   webOrigin: process.env['WEB_ORIGIN'] ?? 'http://localhost:3000',
+  aiProvider: {
+    ...(process.env['OPENAI_API_KEY'] === undefined
+      ? {}
+      : { openAiApiKey: process.env['OPENAI_API_KEY'] }),
+    ...(process.env['ANTHROPIC_API_KEY'] === undefined
+      ? {}
+      : { anthropicApiKey: process.env['ANTHROPIC_API_KEY'] }),
+    ...(process.env['AI_MODEL'] === undefined
+      ? {}
+      : { model: process.env['AI_MODEL'] }),
+    ...(process.env['AI_BASE_URL'] === undefined
+      ? {}
+      : { baseUrl: process.env['AI_BASE_URL'] }),
+  },
 });

@@ -1,10 +1,15 @@
 import type {
+  ContentSuggestion,
   ContentItem,
   GenerateContentRequest,
   GenerateContentResponse,
   Language,
   PageContent,
   PageSlug,
+  RewriteRequest,
+  RewriteResponse,
+  SuggestRequest,
+  SuggestResponse,
   Tone,
 } from '@autosite/shared';
 
@@ -584,4 +589,78 @@ export const generateContent = (
   );
 
   return { pages, tokens_used: tokensUsed };
+};
+
+const TONE_OPENERS: Record<Tone, string> = {
+  professional: 'With clarity and confidence,',
+  friendly: 'With a warm welcome,',
+  luxury: 'With an elevated attention to detail,',
+  casual: 'Simply put,',
+  bold: 'Make no mistake:',
+  formal: 'With considered care,',
+  playful: 'Here is the delightful part:',
+  minimal: 'Simply:',
+};
+
+const ensureSentence = (value: string): string =>
+  /[.!?]$/u.test(value) ? value : `${value}.`;
+
+export const rewriteContent = (request: RewriteRequest): RewriteResponse => {
+  const normalized = request.text.replace(/\s+/gu, ' ').trim();
+  const instruction = request.instruction.toLowerCase();
+  const limit = /short|concise|brief|condense/u.test(instruction) ? 24 : 60;
+  const words = normalized.split(' ');
+  const clipped = words.slice(0, limit).join(' ');
+  const sentence =
+    words.length > limit
+      ? `${clipped.replace(/[.!?]+$/u, '')}…`
+      : ensureSentence(clipped);
+  const rewritten = `${TONE_OPENERS[request.tone]} ${sentence}`;
+
+  return {
+    rewritten,
+    tokens_used: Math.ceil(
+      (request.text.length + request.instruction.length + rewritten.length) / 4,
+    ),
+  };
+};
+
+const SECTION_LABELS: Record<SuggestRequest['section_type'], string> = {
+  hero: 'Welcome',
+  features: 'Why Choose Us',
+  services: 'What We Offer',
+  contact: 'Let’s Connect',
+};
+
+const SECTION_CTAS: Record<SuggestRequest['section_type'], readonly [string, string, string]> = {
+  hero: ['Discover More', 'Get Started', 'Explore Today'],
+  features: ['See the Difference', 'Learn More', 'Why Choose Us'],
+  services: ['View Services', 'Find Your Fit', 'See What We Do'],
+  contact: ['Get in Touch', 'Start a Conversation', 'Contact Us'],
+};
+
+export const suggestContent = (request: SuggestRequest): SuggestResponse => {
+  const context = deriveBusinessName(request.context);
+  const normalizedContext = request.context.replace(/\s+/gu, ' ').trim();
+  const label = SECTION_LABELS[request.section_type];
+  const ctas = SECTION_CTAS[request.section_type];
+  const suggestions: ContentSuggestion[] = [
+    {
+      heading: `${label} to ${context}`,
+      subheading: `Thoughtful experiences shaped around ${normalizedContext}`,
+      cta_text: ctas[0],
+    },
+    {
+      heading: `${context}, Made for You`,
+      subheading: 'Clear value, personal service, and details that matter',
+      cta_text: ctas[1],
+    },
+    {
+      heading: `A Better Way to Experience ${context}`,
+      subheading: 'Quality and care come together at every step',
+      cta_text: ctas[2],
+    },
+  ];
+
+  return { suggestions };
 };
